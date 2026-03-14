@@ -1,0 +1,63 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.env
+.venv
+venv/
+env/
+ENV/
+
+# =========================
+# ML Models (large files)
+# =========================
+backend/models/*.pkl
+backend/models/*.joblib
+backend/models/*.h5
+# Keep the .gitkeep so folder exists
+!backend/models/.gitkeep
+
+# =========================
+# Logs & Temp Files
+# =========================
+*.log
+*.tmp
+*.temp
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================
+# IDE / Editors
+# =========================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# =========================
+# Environment Variables
+# (Never commit API keys!)
+# =========================
+.env
+.env.local
+.env.*.local
+config.secret.py
+
+# =========================
+# Node (if added later)
+# =========================
+node_modules/
+npm-debug.log*
