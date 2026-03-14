@@ -275,7 +275,9 @@ Built with ❤️ at **CHIPS AIML Hackathon 2025**, IIIT Nava Raipur (13–15 Ma
 | Name | GitHub |
 |------|--------|
 | Shibam Khadanga | [@ShibamKhadanga](https://github.com/ShibamKhadanga) |
-| *(Add teammates)* | — |
+| Bandana Gupta | [@guptabandana03](https://github.com/guptabandana03) |
+| Anshika Sahu | [@guptabandana03](https://github.com/guptabandana03) |
+| Sakshi Sinha | [@Sakshiii1010](https://github.com/Sakshiii1010) |
 
 ---
 
