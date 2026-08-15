@@ -115,7 +115,7 @@ Real WhatsApp messaging via Twilio Sandbox + ngrok. A built-in simulator on the 
 ## 🏗️ Architecture
 
 ```
-┌───────────────────────────────────────────────────┐
+┌────────────────────────────────────────────────────┐
 │                Client Layer                        │
 ├──────────┬────────────┬──────────┬────────────────┤
 │  Chrome  │  Operator  │  Admin   │   WhatsApp     │
@@ -123,9 +123,9 @@ Real WhatsApp messaging via Twilio Sandbox + ngrok. A built-in simulator on the 
 │(content) │(index.html)│(admin)   │(Twilio Webhook)│
 └────┬─────┴─────┬──────┴────┬─────┴───────┬────────┘
      │           │           │             │
-     │      HTTP (localhost:5000)          │
+     │      HTTP (localhost:5000)         │
      ▼           ▼           ▼             ▼
-┌───────────────────────────────────────────────────┐
+┌────────────────────────────────────────────────────┐
 │          Flask REST API  (app.py)                  │
 ├──────────┬──────────┬──────────┬─────────────────┤
 │  Web     │   OCR    │  Form    │  Admin API       │
