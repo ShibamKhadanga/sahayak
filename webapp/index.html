@@ -59,10 +59,11 @@
             <th>Progress</th>
             <th>Status</th>
             <th>Updated</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody id="ledgerBody">
-          <tr class="empty-row"><td colspan="7">No sessions yet — start one from the left, or message the WhatsApp line.</td></tr>
+          <tr class="empty-row"><td colspan="8">No sessions yet — start one from the left, or message the WhatsApp line.</td></tr>
         </tbody>
       </table>
     </div>
@@ -122,7 +123,10 @@
   </button>
   <div class="wa-panel">
     <div class="wa-panel-head">
-      <span>WhatsApp line simulator</span>
+      <div class="wa-panel-head-row">
+        <span>WhatsApp line simulator</span>
+        <button id="waCloseBtn" class="btn-icon wa-close-btn" aria-label="Close" title="Close simulator">&times;</button>
+      </div>
       <span class="mono muted" id="waPhoneLabel">whatsapp:+910000000000</span>
     </div>
     <div id="waMessages" class="wa-messages"></div>

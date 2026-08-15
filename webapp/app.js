@@ -118,7 +118,7 @@ function renderLedger(){
   $('#sessionCount').textContent = `${currentSessions.length} session${currentSessions.length === 1 ? '' : 's'}`;
 
   if(currentSessions.length === 0){
-    body.innerHTML = `<tr class="empty-row"><td colspan="7">No sessions yet — start one from the left, or message the WhatsApp line.</td></tr>`;
+    body.innerHTML = `<tr class="empty-row"><td colspan="8">No sessions yet — start one from the left, or message the WhatsApp line.</td></tr>`;
     return;
   }
 
@@ -138,12 +138,37 @@ function renderLedger(){
         </td>
         <td><span class="status-tag status-${s.state}">${statusLabel(s.state)}</span></td>
         <td class="muted">${fmtTime(s.updated_at)}</td>
+        <td><button class="btn-delete" data-delete-id="${s.id}" title="Delete this session">✕ Delete</button></td>
       </tr>
     `;
   }).join('');
 
   $$('#ledgerBody tr[data-id]').forEach(row => {
-    row.addEventListener('click', () => openSession(row.getAttribute('data-id')));
+    row.addEventListener('click', (e) => {
+      // Don't open detail when clicking the delete button
+      if(e.target.closest('.btn-delete')) return;
+      openSession(row.getAttribute('data-id'));
+    });
+  });
+
+  $$('.btn-delete[data-delete-id]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const sid = btn.getAttribute('data-delete-id');
+      if(!confirm(`Delete session ${sid}? This cannot be undone.`)) return;
+      try {
+        const res = await fetch(apiUrl(`/api/session/${encodeURIComponent(sid)}/delete`), { method: 'POST' });
+        const data = await res.json();
+        if(data.success){
+          if(openSessionId === sid) closeDetail();
+          await refreshSessions();
+        } else {
+          alert('Delete failed: ' + (data.error || 'unknown error'));
+        }
+      } catch(err){
+        alert('Delete failed: ' + err.message);
+      }
+    });
   });
 }
 
@@ -274,6 +299,11 @@ $('#waPhoneLabel').textContent = SIM_PHONE;
 $('#waToggleBtn').addEventListener('click', () => {
   $('#waWidget').classList.add('open');
   $('#waWidget').classList.remove('collapsed');
+});
+
+$('#waCloseBtn').addEventListener('click', () => {
+  $('#waWidget').classList.remove('open');
+  $('#waWidget').classList.add('collapsed');
 });
 
 function addWaMessage(text, direction){

@@ -2,6 +2,15 @@
 Sahayak Backend API Server
 Flask-based REST API for AI/ML features
 """
+import sys
+import io
+
+# Fix Windows console encoding — prevents 'charmap' codec errors when
+# Flask logs strings that contain emojis (e.g. 🙏, 📎, ✅).
+if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 from ai_chatbot import get_ai_response
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -504,6 +513,15 @@ def api_reset_session(session_id):
     return jsonify({'success': True, 'session': form_engine.session_summary(session)})
 
 
+@app.route('/api/session/<session_id>/delete', methods=['POST', 'DELETE'])
+def api_delete_session(session_id):
+    """Permanently remove a session from the store."""
+    deleted = session_store.delete_session(session_id)
+    if not deleted:
+        return jsonify({'success': False, 'error': 'Session not found'}), 404
+    return jsonify({'success': True})
+
+
 def _twiml(message_text):
     """Build a minimal TwiML <Response><Message> body — no twilio SDK dependency required."""
     from xml.sax.saxutils import escape
@@ -528,8 +546,8 @@ def whatsapp_webhook():
         body = request.values.get('Body', '')
         num_media = int(request.values.get('NumMedia', 0) or 0)
 
-        account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
-        auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
+        account_sid = os.environ.get('TWILIO_ACCOUNT_SID', 'REDACTED_SID')
+        auth_token = os.environ.get('TWILIO_AUTH_TOKEN', 'REDACTED_TOKEN')
 
         files = []
         for i in range(num_media):
