@@ -11,6 +11,12 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from backend/.env (Twilio credentials, etc.)
+load_dotenv()
+
 from ai_chatbot import get_ai_response
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -29,6 +35,7 @@ import forms_catalog
 import form_engine
 import session_store
 import whatsapp_bot
+import database
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -40,6 +47,14 @@ logger = logging.getLogger(__name__)
 
 # Initialize ML model
 ml_model = MLModel()
+
+# Initialize PostgreSQL database (creates tables + seeds defaults on first run)
+try:
+    database.init_db()
+    logger.info("PostgreSQL database initialized")
+except Exception as e:
+    logger.error(f"Failed to initialize database: {e}")
+    logger.error("Make sure PostgreSQL is running and DATABASE_URL is correct in .env")
 
 @app.route('/')
 def home():
@@ -538,7 +553,6 @@ def whatsapp_webhook():
     "when a message comes in" URL at <your-public-url>/whatsapp/webhook.
     See docs/WHATSAPP_INTEGRATION.md for setup (Twilio sandbox + ngrok).
     """
-    import os
     import requests as _requests
 
     try:
@@ -546,8 +560,8 @@ def whatsapp_webhook():
         body = request.values.get('Body', '')
         num_media = int(request.values.get('NumMedia', 0) or 0)
 
-        account_sid = os.environ.get('TWILIO_ACCOUNT_SID', 'REDACTED_SID')
-        auth_token = os.environ.get('TWILIO_AUTH_TOKEN', 'REDACTED_TOKEN')
+        account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
+        auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
 
         files = []
         for i in range(num_media):
@@ -611,11 +625,126 @@ def whatsapp_simulate():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# Admin API — CRUD for forms, document types, and field definitions
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route('/api/admin/forms', methods=['POST'])
+def admin_create_form():
+    """Create a new form in the catalog."""
+    try:
+        data = request.json or {}
+        required = ['id', 'name', 'category', 'documents', 'fields']
+        for key in required:
+            if key not in data:
+                return jsonify({'success': False, 'error': f'Missing field: {key}'}), 400
+        form = forms_catalog.add_form(
+            data['id'], data['name'], data['category'],
+            data['documents'], data['fields']
+        )
+        return jsonify({'success': True, 'form': form})
+    except Exception as e:
+        logger.error(f"Error creating form: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/forms/<form_id>', methods=['PUT'])
+def admin_update_form(form_id):
+    """Update an existing form."""
+    try:
+        data = request.json or {}
+        form = forms_catalog.update_form(
+            form_id,
+            data.get('name', ''),
+            data.get('category', ''),
+            data.get('documents', []),
+            data.get('fields', []),
+        )
+        if form:
+            return jsonify({'success': True, 'form': form})
+        return jsonify({'success': False, 'error': 'Form not found'}), 404
+    except Exception as e:
+        logger.error(f"Error updating form: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/forms/<form_id>', methods=['DELETE'])
+def admin_delete_form(form_id):
+    """Delete a form from the catalog."""
+    try:
+        forms_catalog.delete_form(form_id)
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error deleting form: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/document-types', methods=['GET'])
+def admin_list_doc_types():
+    """List all document types."""
+    doc_types = forms_catalog.list_document_types()
+    return jsonify({'success': True, 'document_types': doc_types})
+
+
+@app.route('/api/admin/document-types', methods=['POST'])
+def admin_upsert_doc_type():
+    """Create or update a document type."""
+    try:
+        data = request.json or {}
+        if 'type_key' not in data or 'label' not in data:
+            return jsonify({'success': False, 'error': 'Missing type_key or label'}), 400
+        forms_catalog.upsert_document_type(data['type_key'], data['label'])
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/document-types/<type_key>', methods=['DELETE'])
+def admin_delete_doc_type(type_key):
+    try:
+        forms_catalog.delete_document_type(type_key)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/fields', methods=['GET'])
+def admin_list_fields():
+    """List all field definitions."""
+    fields = forms_catalog.list_field_library()
+    return jsonify({'success': True, 'fields': fields})
+
+
+@app.route('/api/admin/fields', methods=['POST'])
+def admin_upsert_field():
+    """Create or update a field definition."""
+    try:
+        data = request.json or {}
+        if 'field_key' not in data or 'label' not in data:
+            return jsonify({'success': False, 'error': 'Missing field_key or label'}), 400
+        forms_catalog.upsert_field(
+            data['field_key'], data['label'],
+            data.get('source_key'), data.get('required', False)
+        )
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/admin/fields/<field_key>', methods=['DELETE'])
+def admin_delete_field(field_key):
+    try:
+        forms_catalog.delete_field(field_key)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     logger.info("Starting Sahayak Backend Server...")
     logger.info("Server will run on http://localhost:5000")
     logger.info("Press Ctrl+C to stop")
-    
+
     # Run the Flask app
     app.run(
         host='0.0.0.0',

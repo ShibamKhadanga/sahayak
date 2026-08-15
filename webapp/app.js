@@ -1,12 +1,12 @@
-/* Sahayak Operator Console
- * -------------------------------------------------------------------
+/* ================================================================
+ * Sahayak Operator Console — App Logic
+ * ================================================================
  * Talks to the same Flask backend the WhatsApp bot talks to. There is
  * no separate "dashboard state" — every view here is a fetch against
  * /api/sessions or /api/session/<id>, which read the one shared
  * session_store.py file. Polling every few seconds is what makes a
- * document sent on WhatsApp show up here without a page reload, and
- * vice versa.
- * ------------------------------------------------------------------- */
+ * document sent on WhatsApp show up here without a page reload.
+ * ================================================================ */
 
 let API_BASE = localStorage.getItem('sahayak_api_base') || 'http://localhost:5000';
 let currentSessions = [];
@@ -19,10 +19,12 @@ const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
 function apiUrl(path){ return API_BASE.replace(/\/$/, '') + path; }
 
+/* ── API helpers ─────────────────────────────────────────────────── */
 async function apiGet(path){
   const res = await fetch(apiUrl(path));
   return res.json();
 }
+
 async function apiPostJson(path, body){
   const res = await fetch(apiUrl(path), {
     method: 'POST',
@@ -31,46 +33,66 @@ async function apiPostJson(path, body){
   });
   return res.json();
 }
+
 async function apiPostForm(path, formData){
   const res = await fetch(apiUrl(path), { method: 'POST', body: formData });
   return res.json();
 }
 
-/* ── Backend status pill ─────────────────────────────────────────── */
+/* ── Toast notification system ───────────────────────────────────── */
+function showToast(message, type = 'info'){
+  const container = $('#toastContainer');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add('toast-exit');
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
+}
+
+/* ── Backend status ──────────────────────────────────────────────── */
 async function checkBackend(){
-  const pill = $('#backendPill');
-  try{
+  const dot = $('#statusDot');
+  const text = $('#statusText');
+  try {
     const data = await apiGet('/api/health');
     if(data && data.status === 'healthy'){
-      pill.textContent = '● backend connected';
-      pill.className = 'pill pill-ok';
+      dot.className = 'status-dot ok';
+      text.textContent = 'Backend connected';
     } else {
       throw new Error('unexpected response');
     }
   } catch(e){
-    pill.textContent = '● backend unreachable';
-    pill.className = 'pill pill-error';
+    dot.className = 'status-dot error';
+    text.textContent = 'Backend unreachable';
   }
 }
 
-/* ── Forms catalog (rail) ────────────────────────────────────────── */
+/* ── Forms catalog ───────────────────────────────────────────────── */
 let formsCatalog = [];
 
 async function loadForms(){
-  const data = await apiGet('/api/forms');
-  if(!data.success) return;
-  formsCatalog = data.forms;
+  try {
+    const data = await apiGet('/api/forms');
+    if(!data.success) return;
+    formsCatalog = data.forms;
 
-  const select = $('#formSelect');
-  select.innerHTML = formsCatalog.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+    const select = $('#formSelect');
+    select.innerHTML = formsCatalog.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
 
-  const list = $('#formsList');
-  list.innerHTML = formsCatalog.map(f => `
-    <li>
-      <span class="fname">${f.name}</span>
-      <span class="fcat muted">${f.category} · ${f.documents.length} docs · ${f.fields.length} fields</span>
-    </li>
-  `).join('');
+    const list = $('#formsList');
+    list.innerHTML = formsCatalog.map(f => `
+      <li>
+        <span class="fname">${f.name}</span>
+        <span class="fcat muted">${f.category} · ${f.documents.length} docs · ${f.fields.length} fields</span>
+      </li>
+    `).join('');
+  } catch(e){
+    // Forms will load on next poll
+  }
 }
 
 $('#startSessionBtn').addEventListener('click', async () => {
@@ -78,10 +100,11 @@ $('#startSessionBtn').addEventListener('click', async () => {
   if(!formId) return;
   const data = await apiPostJson('/api/session/start', { form_id: formId });
   if(data.success){
+    showToast('Session started successfully', 'success');
     await refreshSessions();
     openSession(data.session.id);
   } else {
-    alert('Could not start session: ' + (data.error || 'unknown error'));
+    showToast('Could not start session: ' + (data.error || 'unknown error'), 'error');
   }
 });
 
@@ -102,23 +125,40 @@ function statusLabel(state){
 }
 
 async function refreshSessions(){
-  const data = await apiGet('/api/sessions');
-  if(!data.success) return;
-  currentSessions = data.sessions;
-  renderLedger();
+  try {
+    const data = await apiGet('/api/sessions');
+    if(!data.success) return;
+    currentSessions = data.sessions;
+    renderLedger();
+    updateStats();
 
-  if(openSessionId){
-    const still = currentSessions.find(s => s.id === openSessionId);
-    if(still) renderDetail(still);
+    if(openSessionId){
+      const still = currentSessions.find(s => s.id === openSessionId);
+      if(still) renderDetail(still);
+    }
+  } catch(e){
+    // Will retry on next poll
   }
+}
+
+function updateStats(){
+  const total = currentSessions.length;
+  const complete = currentSessions.filter(s => s.state === 'COMPLETE').length;
+  const inProgress = total - complete;
+  const whatsapp = currentSessions.filter(s => s.channel === 'whatsapp').length;
+
+  $('#statTotal').textContent = total;
+  $('#statInProgress').textContent = inProgress;
+  $('#statComplete').textContent = complete;
+  $('#statWhatsApp').textContent = whatsapp;
+  $('#sessionCount').textContent = `${total} session${total === 1 ? '' : 's'}`;
 }
 
 function renderLedger(){
   const body = $('#ledgerBody');
-  $('#sessionCount').textContent = `${currentSessions.length} session${currentSessions.length === 1 ? '' : 's'}`;
 
   if(currentSessions.length === 0){
-    body.innerHTML = `<tr class="empty-row"><td colspan="8">No sessions yet — start one from the left, or message the WhatsApp line.</td></tr>`;
+    body.innerHTML = `<tr class="empty-row"><td colspan="8">No sessions yet — start one from the sidebar, or message the WhatsApp line.</td></tr>`;
     return;
   }
 
@@ -130,27 +170,33 @@ function renderLedger(){
       <tr data-id="${s.id}">
         <td class="col-no">${i + 1}</td>
         <td><span class="chan-badge ${chanClass}">${chanLabel}</span></td>
-        <td class="mono">${s.id}</td>
+        <td class="mono" style="font-size:12px">${s.id}</td>
         <td>${s.form_name || '<span class="muted">not chosen</span>'}</td>
         <td>
           <span class="progress-mini-track"><span class="progress-mini-fill" style="width:${p.percent}%"></span></span>
-          <span class="muted">${p.percent}%</span>
+          <span class="muted" style="font-size:12px">${p.percent}%</span>
         </td>
         <td><span class="status-tag status-${s.state}">${statusLabel(s.state)}</span></td>
-        <td class="muted">${fmtTime(s.updated_at)}</td>
-        <td><button class="btn-delete" data-delete-id="${s.id}" title="Delete this session">✕ Delete</button></td>
+        <td class="muted" style="font-size:12px">${fmtTime(s.updated_at)}</td>
+        <td>
+          <button class="btn-danger btn-delete" data-delete-id="${s.id}" title="Delete session">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="12" height="12"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+            Delete
+          </button>
+        </td>
       </tr>
     `;
   }).join('');
 
+  // Row click → open detail (but not on delete button)
   $$('#ledgerBody tr[data-id]').forEach(row => {
     row.addEventListener('click', (e) => {
-      // Don't open detail when clicking the delete button
       if(e.target.closest('.btn-delete')) return;
       openSession(row.getAttribute('data-id'));
     });
   });
 
+  // Delete buttons
   $$('.btn-delete[data-delete-id]').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -161,18 +207,19 @@ function renderLedger(){
         const data = await res.json();
         if(data.success){
           if(openSessionId === sid) closeDetail();
+          showToast('Session deleted', 'success');
           await refreshSessions();
         } else {
-          alert('Delete failed: ' + (data.error || 'unknown error'));
+          showToast('Delete failed: ' + (data.error || 'unknown error'), 'error');
         }
       } catch(err){
-        alert('Delete failed: ' + err.message);
+        showToast('Delete failed: ' + err.message, 'error');
       }
     });
   });
 }
 
-/* ── Detail panel ─────────────────────────────────────────────────── */
+/* ── Detail panel ────────────────────────────────────────────────── */
 function openSession(sessionId){
   openSessionId = sessionId;
   const session = currentSessions.find(s => s.id === sessionId);
@@ -186,6 +233,7 @@ function closeDetail(){
   $('#detailPanel').classList.add('hidden');
   $('#detailOverlay').classList.add('hidden');
 }
+
 $('#closeDetailBtn').addEventListener('click', closeDetail);
 $('#detailOverlay').addEventListener('click', closeDetail);
 
@@ -197,9 +245,10 @@ function renderDetail(session){
   $('#detailProgressFill').style.width = p.percent + '%';
   $('#detailProgressLabel').textContent = p.percent + '%';
 
+  // Documents
   $('#detailDocs').innerHTML = (session.doc_rows || []).map(d => `
     <li>
-      <span class="doc-status ${d.received ? 'received' : 'pending'}">${d.received ? '●' : '○'}</span>
+      <span class="doc-status ${d.received ? 'received' : 'pending'}">${d.received ? '✓' : '○'}</span>
       <span class="doc-name">${d.label}${d.filename ? ` <span class="muted">(${d.filename})</span>` : ''}</span>
       ${!d.received ? `<label class="doc-upload-label">Upload
           <input type="file" hidden class="doc-upload-input" data-doc-type="${d.type}">
@@ -217,13 +266,15 @@ function renderDetail(session){
       fd.append('doc_type', docType);
       const data = await apiPostForm(`/api/session/${encodeURIComponent(session.id)}/document`, fd);
       if(data.success){
+        showToast('Document uploaded', 'success');
         await refreshSessions();
       } else {
-        alert('Upload failed: ' + (data.error || 'unknown error'));
+        showToast('Upload failed: ' + (data.error || 'unknown error'), 'error');
       }
     });
   });
 
+  // Fields
   $('#detailFields').innerHTML = (session.field_rows || []).map(f => `
     <div class="field-row">
       <label>
@@ -240,14 +291,19 @@ function renderDetail(session){
       const data = await apiPostJson(`/api/session/${encodeURIComponent(session.id)}/field`, {
         field_key: fieldKey, value: input.value,
       });
-      if(data.success) await refreshSessions();
+      if(data.success){
+        showToast('Field updated', 'success');
+        await refreshSessions();
+      }
     });
   });
 
+  // Conversation history
   $('#detailHistory').innerHTML = (session.history || []).slice(-30).map(h => `
     <div class="history-msg ${h.role === 'user' ? 'user' : 'bot'}">${escapeHtml(h.text)}</div>
   `).join('') || '<p class="muted">No conversation yet</p>';
 
+  // Completion stub
   $('#stubSection').classList.toggle('hidden', session.state !== 'COMPLETE');
 }
 
@@ -255,7 +311,29 @@ $('#resetSessionBtn').addEventListener('click', async () => {
   if(!openSessionId) return;
   if(!confirm('Reset this session? Collected documents and fields will be cleared.')) return;
   const data = await apiPostJson(`/api/session/${encodeURIComponent(openSessionId)}/reset`, {});
-  if(data.success) await refreshSessions();
+  if(data.success){
+    showToast('Session reset', 'info');
+    await refreshSessions();
+  }
+});
+
+// Delete from detail panel
+$('#deleteSessionBtn').addEventListener('click', async () => {
+  if(!openSessionId) return;
+  if(!confirm(`Delete session ${openSessionId}? This cannot be undone.`)) return;
+  try {
+    const res = await fetch(apiUrl(`/api/session/${encodeURIComponent(openSessionId)}/delete`), { method: 'POST' });
+    const data = await res.json();
+    if(data.success){
+      showToast('Session deleted', 'success');
+      closeDetail();
+      await refreshSessions();
+    } else {
+      showToast('Delete failed: ' + (data.error || 'unknown'), 'error');
+    }
+  } catch(err){
+    showToast('Delete failed: ' + err.message, 'error');
+  }
 });
 
 $('#printStubBtn').addEventListener('click', () => {
@@ -269,12 +347,12 @@ $('#printStubBtn').addEventListener('click', () => {
   win.document.write(`
     <html><head><title>${session.form_name} — Summary</title>
     <style>
-      body{ font-family: Georgia, serif; padding: 40px; color: #23262B; }
-      h1{ font-size: 20px; border-bottom: 2px solid #2F6F62; padding-bottom: 10px; }
+      body{ font-family: 'Inter', system-ui, sans-serif; padding: 40px; color: #0f172a; }
+      h1{ font-size: 20px; border-bottom: 2px solid #0d9488; padding-bottom: 10px; }
       table{ width: 100%; border-collapse: collapse; margin-top: 20px; }
-      td{ padding: 8px 6px; border-bottom: 1px solid #ddd; font-size: 14px; }
-      td:first-child{ font-weight: bold; width: 45%; }
-      .meta{ font-size: 12px; color: #777; }
+      td{ padding: 8px 6px; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
+      td:first-child{ font-weight: 600; width: 45%; }
+      .meta{ font-size: 12px; color: #94a3b8; }
     </style></head>
     <body>
       <h1>${session.form_name}</h1>
@@ -331,12 +409,16 @@ $('#waForm').addEventListener('submit', async (e) => {
   if(file) fd.append('file', file);
   fileInput.value = '';
 
-  const data = await apiPostForm('/api/whatsapp/simulate', fd);
-  if(data.success){
-    addWaMessage(data.reply, 'in');
-    await refreshSessions();
-  } else {
-    addWaMessage('⚠️ ' + (data.error || 'Something went wrong'), 'in');
+  try {
+    const data = await apiPostForm('/api/whatsapp/simulate', fd);
+    if(data.success){
+      addWaMessage(data.reply, 'in');
+      await refreshSessions();
+    } else {
+      addWaMessage('⚠️ ' + (data.error || 'Something went wrong'), 'in');
+    }
+  } catch(err){
+    addWaMessage('⚠️ Could not reach backend', 'in');
   }
 });
 
@@ -350,6 +432,7 @@ $('#apiBaseInput').value = API_BASE;
 $('#apiBaseInput').addEventListener('change', (e) => {
   API_BASE = e.target.value.trim() || 'http://localhost:5000';
   localStorage.setItem('sahayak_api_base', API_BASE);
+  showToast('API base updated', 'info');
   bootstrap();
 });
 

@@ -17,11 +17,23 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 # Virtual Environments
-.env
 .venv
 venv/
 env/
 ENV/
+
+# =========================
+# Secrets / Environment
+# (Never commit API keys or DB passwords!)
+# =========================
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+backend/.env
+config.secret.py
+*.secret
 
 # =========================
 # ML Models (large files)
@@ -35,7 +47,7 @@ backend/models/*.onnx
 !backend/models/.gitkeep
 
 # =========================
-# Sahayak Session Data (contains citizens' PII)
+# Sahayak Session Data (legacy JSON — now in PostgreSQL)
 # =========================
 backend/data/sessions.json
 !backend/data/.gitkeep
@@ -69,18 +81,6 @@ ehthumbs.db
 *.sublime-workspace
 *.code-workspace
 .history/
-
-# =========================
-# Environment Variables
-# (Never commit API keys!)
-# =========================
-.env
-.env.local
-.env.*.local
-.env.production
-.env.development
-config.secret.py
-*.secret
 
 # =========================
 # Node (if added later)

@@ -1,148 +1,132 @@
 """
-Forms Catalog
-=============
+Forms Catalog (PostgreSQL)
+==========================
 The single source of truth for "which forms does Sahayak handle, what
 documents does each one need, and what fields does it collect".
 
-Both the web dashboard and the WhatsApp bot read this catalog through
-form_engine.py, so adding a new form here automatically makes it available
-on both channels — that's the "always in sync" requirement in practice.
+This module reads from the PostgreSQL database (tables: forms,
+document_types, field_library) instead of hardcoded Python dicts.
+The default data is seeded by database.init_db() on first run.
 
-Each field's `source` key is the key that ocr_processor.extract_smart_data()
-produces when it recognises that value on an uploaded document. When a
-document is uploaded, form_engine copies any matching `source` keys into
-the session's collected fields automatically. Fields with no matching
-extracted key (or where extraction failed) are asked as plain questions —
-on WhatsApp as a one-by-one text prompt, on the dashboard as an editable
-input.
+All function signatures are preserved from the original version so that
+form_engine.py, whatsapp_bot.py, and app.py work unchanged.
 """
 
-DOCUMENT_TYPES = {
-    "aadhaar": "Aadhaar Card",
-    "pan": "PAN Card",
-    "photo": "Passport-size photo",
-    "address_proof": "Address proof (Aadhaar / electricity bill / rent agreement)",
-    "bank_passbook": "Bank passbook (first page)",
-    "income_proof": "Income proof / salary slip",
-    "age_proof": "Age proof (Aadhaar / birth certificate / 10th marksheet)",
-    "caste_proof": "Caste certificate, if already issued (or a self-declaration)",
-    "hospital_discharge": "Hospital discharge slip or birth affidavit",
-    "parent_id_proof": "Parent's ID proof (Aadhaar)",
-}
+import json
+import database as db
 
-# field key -> (label, source key from extract_smart_data, required?)
-FIELD_LIBRARY = {
-    "name":            ("Full name",               "name",           True),
-    "father_name":     ("Father's name",            "father_name",    True),
-    "mother_name":     ("Mother's name",            "mother_name",    False),
-    "dob":             ("Date of birth (DD/MM/YYYY)","dob",           True),
-    "age":             ("Age",                      "age",            False),
-    "gender":          ("Gender",                   "gender",         True),
-    "address":         ("Address",                  "address",        True),
-    "mobile":          ("Mobile number",             "mobile",        True),
-    "email":           ("Email address",             "email",         False),
-    "aadhar":          ("Aadhaar number",             "aadhar",       True),
-    "pan":             ("PAN number",                "pan",           False),
-    "account_number":  ("Bank account number",       "account_number",True),
-    "ifsc":            ("Bank IFSC code",             "ifsc",         True),
-    "bank_name":       ("Bank name",                  "bank_name",    False),
-    "pincode":         ("PIN code",                   "pincode",      False),
-    "state":           ("State",                      "state",       True),
-    "district":        ("District",                   "district",    False),
-    "caste":           ("Caste / category",            "caste",      True),
-    "income":          ("Annual family income (Rs.)",  "income",     True),
-    "occupation":      ("Occupation",                   "occupation",False),
-    "family_members":  ("Number of family members",     None,        False),
-}
 
-FORMS = [
-    {
-        "id": "aadhaar_update",
-        "name": "Aadhaar Card — Update",
-        "category": "Identity",
-        "documents": ["aadhaar", "address_proof"],
-        "fields": ["name", "dob", "gender", "address", "mobile", "aadhar"],
-    },
-    {
-        "id": "pan_card",
-        "name": "PAN Card — New Application",
-        "category": "Identity",
-        "documents": ["aadhaar", "photo"],
-        "fields": ["name", "father_name", "dob", "gender", "address", "mobile", "email"],
-    },
-    {
-        "id": "driving_license",
-        "name": "Learner's / Driving License",
-        "category": "Transport",
-        "documents": ["aadhaar", "address_proof", "photo"],
-        "fields": ["name", "dob", "gender", "address", "mobile"],
-    },
-    {
-        "id": "income_certificate",
-        "name": "Income Certificate",
-        "category": "Revenue",
-        "documents": ["aadhaar", "income_proof"],
-        "fields": ["name", "father_name", "address", "income", "occupation", "district", "state"],
-    },
-    {
-        "id": "ration_card",
-        "name": "Ration Card — New Application",
-        "category": "Food & Civil Supplies",
-        "documents": ["aadhaar", "address_proof", "income_proof"],
-        "fields": ["name", "father_name", "address", "income", "family_members", "caste"],
-    },
-    {
-        "id": "old_age_pension",
-        "name": "Old Age Pension",
-        "category": "Social Welfare",
-        "documents": ["aadhaar", "age_proof", "bank_passbook"],
-        "fields": ["name", "dob", "age", "gender", "address", "account_number", "ifsc", "bank_name", "income"],
-    },
-    {
-        "id": "voter_id",
-        "name": "Voter ID Registration",
-        "category": "Identity",
-        "documents": ["aadhaar", "address_proof", "photo"],
-        "fields": ["name", "father_name", "dob", "gender", "address"],
-    },
-    {
-        "id": "birth_certificate",
-        "name": "Birth Certificate",
-        "category": "Civil Registration",
-        "documents": ["hospital_discharge", "parent_id_proof"],
-        "fields": ["name", "father_name", "mother_name", "dob", "address", "district", "state"],
-    },
-    {
-        "id": "bank_account_opening",
-        "name": "Bank Account Opening",
-        "category": "Banking",
-        "documents": ["aadhaar", "pan", "photo"],
-        "fields": ["name", "father_name", "dob", "address", "mobile", "email", "pan", "occupation"],
-    },
-    {
-        "id": "caste_certificate",
-        "name": "Caste Certificate",
-        "category": "Revenue",
-        "documents": ["aadhaar", "address_proof", "caste_proof"],
-        "fields": ["name", "father_name", "address", "caste", "district", "state"],
-    },
-]
-
-FORMS_BY_ID = {f["id"]: f for f in FORMS}
-
+# ---------------------------------------------------------------------------
+# Read operations (same signatures as the original)
+# ---------------------------------------------------------------------------
 
 def get_form(form_id):
-    return FORMS_BY_ID.get(form_id)
+    """Returns a form dict or None."""
+    row = db.fetch_one("SELECT * FROM forms WHERE id = %s", (form_id,))
+    if not row:
+        return None
+    return _row_to_form(row)
 
 
 def list_forms():
-    return FORMS
+    """Returns all forms as a list of dicts."""
+    rows = db.fetch_all("SELECT * FROM forms ORDER BY category, name")
+    return [_row_to_form(r) for r in rows]
 
 
 def field_meta(field_key):
     """Returns (label, source_key, required) for a field key."""
-    return FIELD_LIBRARY.get(field_key, (field_key.replace("_", " ").title(), None, False))
+    row = db.fetch_one("SELECT * FROM field_library WHERE field_key = %s", (field_key,))
+    if row:
+        return (row["label"], row.get("source_key"), row.get("required", False))
+    # Fallback for unknown fields
+    return (field_key.replace("_", " ").title(), None, False)
 
 
 def document_label(doc_type):
-    return DOCUMENT_TYPES.get(doc_type, doc_type.replace("_", " ").title())
+    """Returns the human-readable label for a document type."""
+    row = db.fetch_one("SELECT label FROM document_types WHERE type_key = %s", (doc_type,))
+    if row:
+        return row["label"]
+    return doc_type.replace("_", " ").title()
+
+
+# ---------------------------------------------------------------------------
+# CRUD operations (new — used by the admin panel)
+# ---------------------------------------------------------------------------
+
+def add_form(form_id, name, category, documents, fields):
+    """Add a new form to the catalog."""
+    db.execute(
+        """INSERT INTO forms (id, name, category, documents, fields)
+           VALUES (%s, %s, %s, %s, %s)""",
+        (form_id, name, category, json.dumps(documents), json.dumps(fields)),
+    )
+    return get_form(form_id)
+
+
+def update_form(form_id, name, category, documents, fields):
+    """Update an existing form."""
+    db.execute(
+        """UPDATE forms SET name = %s, category = %s, documents = %s, fields = %s, updated_at = NOW()
+           WHERE id = %s""",
+        (name, category, json.dumps(documents), json.dumps(fields), form_id),
+    )
+    return get_form(form_id)
+
+
+def delete_form(form_id):
+    """Delete a form from the catalog."""
+    db.execute("DELETE FROM forms WHERE id = %s", (form_id,))
+    return True
+
+
+# Document types CRUD
+def list_document_types():
+    rows = db.fetch_all("SELECT * FROM document_types ORDER BY type_key")
+    return {r["type_key"]: r["label"] for r in rows}
+
+
+def upsert_document_type(type_key, label):
+    db.execute(
+        """INSERT INTO document_types (type_key, label) VALUES (%s, %s)
+           ON CONFLICT (type_key) DO UPDATE SET label = EXCLUDED.label""",
+        (type_key, label),
+    )
+
+
+def delete_document_type(type_key):
+    db.execute("DELETE FROM document_types WHERE type_key = %s", (type_key,))
+
+
+# Field library CRUD
+def list_field_library():
+    rows = db.fetch_all("SELECT * FROM field_library ORDER BY field_key")
+    return rows
+
+
+def upsert_field(field_key, label, source_key=None, required=False):
+    db.execute(
+        """INSERT INTO field_library (field_key, label, source_key, required) VALUES (%s, %s, %s, %s)
+           ON CONFLICT (field_key) DO UPDATE SET label = EXCLUDED.label, source_key = EXCLUDED.source_key, required = EXCLUDED.required""",
+        (field_key, label, source_key, required),
+    )
+
+
+def delete_field(field_key):
+    db.execute("DELETE FROM field_library WHERE field_key = %s", (field_key,))
+
+
+# ---------------------------------------------------------------------------
+# Internal
+# ---------------------------------------------------------------------------
+
+def _row_to_form(row):
+    """Convert a DB row to the form dict format expected by form_engine."""
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "category": row["category"],
+        "documents": row["documents"] if isinstance(row["documents"], list) else json.loads(row["documents"]),
+        "fields": row["fields"] if isinstance(row["fields"], list) else json.loads(row["fields"]),
+    }
