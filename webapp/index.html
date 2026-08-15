@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sahayak — Operator Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-brand">
+    <span class="brand-mark">स</span>
+    <div class="brand-text">
+      <h1>Sahayak <span class="brand-sub">Operator Console</span></h1>
+      <p class="brand-tagline">One register for every form — worked from the counter or from WhatsApp</p>
+    </div>
+  </div>
+  <div class="topbar-status">
+    <span id="backendPill" class="pill pill-pending">● checking backend…</span>
+    <label class="api-base-field" title="Backend URL">
+      API
+      <input id="apiBaseInput" type="text" value="http://localhost:5000" spellcheck="false">
+    </label>
+  </div>
+</header>
+
+<div class="layout">
+
+  <aside class="rail">
+    <section class="rail-section">
+      <h2>Start a session</h2>
+      <p class="rail-hint">Pick a form to begin filling it from this console. A citizen can also start the same form on WhatsApp — either way it lands in the register below.</p>
+      <select id="formSelect" class="form-select"></select>
+      <button id="startSessionBtn" class="btn btn-primary btn-block">Start on web</button>
+    </section>
+
+    <section class="rail-section">
+      <h2>Forms handled</h2>
+      <ul id="formsList" class="forms-list"></ul>
+    </section>
+  </aside>
+
+  <main class="main">
+    <div class="main-header">
+      <h2>Session register</h2>
+      <span id="sessionCount" class="session-count">0 sessions</span>
+    </div>
+    <div class="ledger-wrap">
+      <table class="ledger">
+        <thead>
+          <tr>
+            <th class="col-no">#</th>
+            <th>Channel</th>
+            <th>Session</th>
+            <th>Form</th>
+            <th>Progress</th>
+            <th>Status</th>
+            <th>Updated</th>
+          </tr>
+        </thead>
+        <tbody id="ledgerBody">
+          <tr class="empty-row"><td colspan="7">No sessions yet — start one from the left, or message the WhatsApp line.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+</div>
+
+<!-- Session detail panel -->
+<div id="detailOverlay" class="overlay hidden"></div>
+<aside id="detailPanel" class="detail-panel hidden">
+  <div class="detail-head">
+    <div>
+      <p class="detail-eyebrow">Case file</p>
+      <h3 id="detailFormName">—</h3>
+      <p id="detailSessionId" class="mono muted"></p>
+    </div>
+    <button id="closeDetailBtn" class="btn-icon" aria-label="Close">✕</button>
+  </div>
+
+  <div class="detail-progress">
+    <div class="progress-track"><div id="detailProgressFill" class="progress-fill"></div></div>
+    <span id="detailProgressLabel" class="progress-label">0%</span>
+  </div>
+
+  <section class="detail-section">
+    <h4>Documents</h4>
+    <ul id="detailDocs" class="doc-checklist"></ul>
+  </section>
+
+  <section class="detail-section">
+    <h4>Fields</h4>
+    <div id="detailFields" class="field-rows"></div>
+  </section>
+
+  <section class="detail-section">
+    <h4>Conversation</h4>
+    <div id="detailHistory" class="history-log"></div>
+  </section>
+
+  <section id="stubSection" class="stub-section hidden">
+    <div class="receipt-stub">
+      <p class="stub-eyebrow">Filled &amp; ready</p>
+      <p class="stub-line">This case file is complete. Review the fields above, then print or hand off for submission.</p>
+      <button id="printStubBtn" class="btn btn-secondary">Print summary</button>
+    </div>
+  </section>
+
+  <div class="detail-actions">
+    <button id="resetSessionBtn" class="btn btn-ghost">Reset this session</button>
+  </div>
+</aside>
+
+<!-- WhatsApp tester widget -->
+<div id="waWidget" class="wa-widget collapsed">
+  <button id="waToggleBtn" class="wa-toggle">
+    <span class="wa-toggle-dot"></span> Test WhatsApp
+  </button>
+  <div class="wa-panel">
+    <div class="wa-panel-head">
+      <span>WhatsApp line simulator</span>
+      <span class="mono muted" id="waPhoneLabel">whatsapp:+910000000000</span>
+    </div>
+    <div id="waMessages" class="wa-messages"></div>
+    <form id="waForm" class="wa-form">
+      <input id="waFileInput" type="file" hidden>
+      <button type="button" id="waAttachBtn" class="btn-icon" title="Attach a document">📎</button>
+      <input id="waTextInput" type="text" placeholder="Type a message…" autocomplete="off">
+      <button type="submit" class="btn btn-primary btn-sm">Send</button>
+    </form>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
